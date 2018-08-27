@@ -1,2 +1,5 @@
-FROM        sdurrheimer/alpine-golang-make-onbuild
-MAINTAINER  The Prometheus Authors <prometheus-developers@googlegroups.com>
+FROM centos
+MAINTAINER  openshift-qe
+COPY  prom2json /
+RUN chmod a+x /prom2json
+ENTRYPOINT ["/prom2json"]

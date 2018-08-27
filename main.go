@@ -129,22 +129,24 @@ func makeBuckets(m *dto.Metric) map[string]string {
 	return result
 }
 
-func fetchMetricFamilies(url string, ch chan<- *dto.MetricFamily, certificate string, key string) {
+func fetchMetricFamilies(url string, ch chan<- *dto.MetricFamily, certificate string, key string, skipServerCertCheck bool) {
 	defer close(ch)
 	var transport *http.Transport
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: skipServerCertCheck,
+	}
 	if certificate != "" && key != "" {
 		cert, err := tls.LoadX509KeyPair(certificate, key)
 		if err != nil {
 			log.Fatal(err)
 		}
-		tlsConfig := &tls.Config{
-			Certificates: []tls.Certificate{cert},
+		tlsConfig = &tls.Config{
+			Certificates:       []tls.Certificate{cert},
+			InsecureSkipVerify: skipServerCertCheck,
 		}
-		tlsConfig.BuildNameToCertificate()
-		transport = &http.Transport{TLSClientConfig: tlsConfig}
-	} else {
-		transport = &http.Transport{}
 	}
+	tlsConfig.BuildNameToCertificate()
+	transport = &http.Transport{TLSClientConfig: tlsConfig}
 	client := &http.Client{Transport: transport}
 	decodeContent(client, url, ch)
 }
@@ -196,6 +198,7 @@ func main() {
 	runtime.GOMAXPROCS(5)
 	cert := flag.String("cert", "", "certificate file")
 	key := flag.String("key", "", "key file")
+	skipServerCertCheck := flag.Bool("accept-invalid-cert", false, "Accept any certificate during TLS handshake. Insecure, use only for testing.")
 	flag.Parse()
 	mfChan := make(chan *dto.MetricFamily, 1024)
 	if len(flag.Args()) != 1 {
@@ -204,7 +207,7 @@ func main() {
 	if (*cert != "" && *key == "") || (*cert == "" && *key != "") {
 		log.Fatalf("Usage: %s METRICS_URL\n with TLS client authentication: %s -cert=/path/to/certificate -key=/path/to/key METRICS_URL", os.Args[0], os.Args[0])
 	}
-	go fetchMetricFamilies(flag.Args()[0], mfChan, *cert, *key)
+	go fetchMetricFamilies(flag.Args()[0], mfChan, *cert, *key, *skipServerCertCheck)
 	result := []*metricFamily{}
 	for mf := range mfChan {
 		result = append(result, newMetricFamily(mf))
